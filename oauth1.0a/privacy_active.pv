@@ -1,0 +1,58 @@
+let login(account:name, rpname:entity, idpname:entity)=
+           new root:entity;
+           let rpname_1=rpname in
+           out(priv_ch, (OW, root));
+           in(priv_ch,(=root,docname:entity));
+           out(priv_ch,(https_c,docname,rpname_1));
+           let callback_2=docname in
+           out(priv_ch, (https_s,(nonce_2, callback_2, idpname),docname, rpname_1));
+           in(priv_ch, (=https_r, (=nonce_1, request_token_2:bitstring, =idpname), =docname, =rpname_1));
+           out(priv_ch,(https_c,docname,idpname));
+           let password:bitstring=getpss(account) in
+           out(priv_ch,(https_s, (request_token_2, account, password), docname,idpname)); 
+           in(priv_ch, (=https_r, (verifier_1:bitstring, =request_token_2), =docname, =idpname));
+           out(priv_ch,(https_s,(nonce_3, verifier_1,request_token_2),docname, rpname_1));
+           in(priv_ch, (=https_r, (=nonce_4, access_token_2:bitstring, access_secret_2:bitstring), =docname, =rpname_1)).
+
+let RP(rpname:entity, idpname:entity)=
+       in(c, (docname_1:entity,=rpname));
+       in(priv_ch, (=https_r, (=nonce_2, callback:entity, =idpname), =docname_1, =rpname));  
+       out(priv_ch, (https_c, rpname,idpname));
+       out(priv_ch, (https_s, (nonce_5, callback),rpname, idpname));
+       in(priv_ch, (=https_r, (=nonce_6,request_token_1:bitstring, secret_1:bitstring), =rpname, =idpname));
+       out(priv_ch, (https_s, (nonce_1,request_token_1, idpname), docname_1, rpname));
+       in(priv_ch, (=https_r, (=nonce_3, verifier_2:bitstring, =request_token_1), =docname_1, =rpname));
+       out(priv_ch, (https_s, (verifier_2, request_token_1), rpname, idpname));
+       in(priv_ch, (=https_r, (=nonce_7, access_token_1:bitstring, access_secret_1:bitstring, userinfo_1:bitstring),=rpname,=idpname));
+       out(priv_ch, (https_r, (nonce_4, access_token_1, access_secret_1), docname_1, rpname)).
+
+let IDP(idpname:entity, verifier_1:bitstring, verifier:bitstring)=
+        in(c,(rpname_2:entity,=idpname));
+        in(priv_ch, (=https_r, (=nonce_5,callback_1:entity), =rpname_2, =idpname));
+        new request_token:bitstring;
+        new secret:bitstring;
+        out(priv_ch, (https_s, (nonce_6, request_token, secret), rpname_2, idpname));
+        in(c,(docname_2:entity,=idpname));
+        in(priv_ch, (=https_r, (=request_token, account_1:name, password_1:bitstring), =docname_2, =idpname));
+        if password_1=getpss(account_1) then 
+        out(priv_ch, (https_s, (verifier, request_token), docname_2, idpname));
+        in(priv_ch, (=https_r, (=verifier_1, =request_token), =rpname_2, =idpname)); 
+        new access_token:bitstring;
+        new access_secret:bitstring;
+        out(priv_ch, (https_s, (nonce_7, access_token, access_secret, userinfo(account_1), rpname_2, idpname))).
+             
+
+
+process new idpname:entity; new RPname1:entity; new RPname2:entity; 
+       new verifier_1:bitstring; new verifier_2:bitstring;
+        (!out(chc,idpname)|!out(chc,RPname1)|!out(chc, RPname2)|
+         web| 
+          ((let account=account1 in
+           let rpname:entity=choice[RPname1,RPname2] in 
+           let verifier:bitstring=choice[verifier_1, verifier_2] in login(account, rpname,idpname)|!RP(rpname,idpname)|!IDP(idpname, verifier_1,verifier))|
+          (let account=account2 in
+           let rpname:entity=choice[RPname2,RPname1] in 
+           let verifier:bitstring=choice[verifier_2, verifier_1] in login(account, rpname,idpname)|!RP(rpname,idpname)|!IDP(idpname, verifier_1, verifier)))) 
+
+
+

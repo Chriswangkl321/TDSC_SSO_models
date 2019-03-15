@@ -1,0 +1,85 @@
+let login( account:name, rpname:entity, idpname:entity)= 
+           new root:entity;
+           let rpname_1=rpname in
+           out(priv_ch, (OW, root));
+           in(priv_ch,(=root,docname:entity));
+           out(priv_ch,(https_c,docname,rpname_1));
+           let mode:bitstring=authorization in (* define which mode to be used*)
+           out(priv_ch, (https_s,(idpname, mode),docname,rpname_1));
+           in(priv_ch,(=https_r, (=nonce_1, client_id_1:bitstring,state_1:bitstring), =docname,=rpname_1));           
+           out(priv_ch,(https_c,docname,idpname));
+           out(priv_ch,(https_s,(nonce_8, client_id_1, state_1),docname,idpname));
+           in(priv_ch, (=https_r, =user_info_request, =docname, =idpname));          
+           let password:bitstring=getpss(account) in
+           out(priv_ch,(https_s,(nonce_7, account, password),docname,idpname));
+           in(priv_ch, (=https_r, (=nonce_2, code_1:bitstring,=state_1), =docname,=idpname));         
+           out(priv_ch,(https_s, (code_1,state_1),docname, rpname_1));
+           in(priv_ch,(=https_r, (=nonce_6,session_token_1:bitstring), =docname,=rpname_1)).
+
+          
+let RP(rpname:entity, idpname:entity)=
+       in(c, (docname_1:entity,=rpname));
+       out(priv_ch, (https_c,rpname,idpname));
+       in(priv_ch,(=https_r,(=idpname, mode_1:bitstring),=docname_1,=rpname));
+       new state:bitstring;
+       new client_id:bitstring;
+       out(priv_ch, (https_s, (nonce_1, client_id, state), docname_1, rpname));
+       in(priv_ch, (=https_r, (code_2:bitstring, =state), =docname_1,=rpname));
+       out(priv_ch, (https_c,rpname,idpname));
+       new client_secret:bitstring;
+       out(priv_ch, (https_s, (nonce_3, code_2, client_id, client_secret), rpname,idpname));
+       in(priv_ch, (=https_r, (=nonce_5,access_token_1:bitstring), =rpname,=idpname));
+       out(priv_ch, (https_s, (nonce_10, mode_1, access_token_1), rpname, idpname)); 
+       (if mode_1=authen then
+       in(priv_ch,(=https_r, (=nonce_9,protected_files_1:bitstring), =rpname, =idpname))
+       )|
+       (if mode_1=authorization then 
+       (
+       in(priv_ch, (=https_r, (=nonce_4, =client_id, user_id_1:bitstring), =rpname, =idpname));
+       new session_token:bitstring; 
+       out(priv_ch, (https_s, (nonce_6,session_token), docname_1, rpname))
+       )).
+
+let IDP(idpname:entity)=
+        in(c,(docname_2:entity,=idpname));
+        in(c,(rpname_2:entity,=idpname));
+        in(priv_ch,(=https_r, (=nonce_8, client_id_2:bitstring, state_2:bitstring), =docname_2, =idpname));
+out(chc, (client_id_2, state_2));
+        out(priv_ch, (https_s, user_info_request, docname_2, idpname));
+out(chc, user_info_request);
+        in(priv_ch, (=https_r, (=nonce_7, account_1:name,password_1:bitstring), =docname_2, =idpname)); 
+out(chc,(account_1, password_1));
+        if password_1=getpss(account_1) then
+        let code:bitstring=Code(account_1, rpname_2) in
+        out(priv_ch,(https_s, (nonce_2, code, state_2), docname_2, idpname)); 
+out(chc, (code, state_2));     
+        in(priv_ch, (=https_r, (=nonce_3, =code, =client_id_2,client_secret_2:bitstring), =rpname_2, =idpname));
+out(chc, (code, client_id_2, client_secret_2));
+        new access_token:bitstring;
+        out(priv_ch, (https_s, (nonce_5,access_token), rpname_2, idpname));
+out(chc, access_token);
+        in(priv_ch, (=https_r, (=nonce_10, mode_2:bitstring, =access_token), =rpname_2, =idpname));
+out(chc, (mode_2, access_token));
+        (if mode_2=authen then
+        new protected_files:bitstring;
+        out(priv_ch, (https_s, (nonce_9,protected_files), rpname_2, idpname));
+out(chc, protected_files)
+        )|
+        (if mode_2=authorization then 
+         new user_id:bitstring;
+         out(priv_ch, (https_s, (nonce_4, client_id_2, user_id), rpname_2, idpname));
+out(chc, (client_id_2, user_id))
+        ).
+             
+process new idpname:entity; new RPname1:entity; new RPname2:entity; 
+       
+        (!out(chc,idpname)|!out(chc,RPname1)|!out(chc, RPname2)|!IDP(idpname)|
+         web| 
+          ((let account=account1 in
+           let rpname:entity=choice[RPname1,RPname2] in login(account, rpname,idpname)|!RP(rpname,idpname))|
+          (let account=account2 in
+           let rpname:entity=choice[RPname2,RPname1] in login(account, rpname,idpname)|!RP(rpname,idpname) )))            
+ 
+            
+
+          

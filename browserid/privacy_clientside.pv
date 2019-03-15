@@ -1,0 +1,103 @@
+let login(account:name, rpname:entity, idpname:entity)
+          =
+          let rpname_1=rpname in
+          new root:entity; 
+          out(priv_ch, (OW, root)); 
+          in(priv_ch, (=root,RPdoc:entity));
+          out(priv_ch, (OW, RPdoc));
+          in(priv_ch, (=RPdoc, LD:entity));  
+          (
+          in(priv_ch1, (=PM, =LD,=RPdoc, (ia:bitstring,UC:bitstring,email_5:bitstring)));
+          out(priv_ch, (https_c,RPdoc,rpname_1));
+          out(priv_ch, (https_s, (ia,UC,email_5), RPdoc,rpname_1)); 
+          in(priv_ch, (=https_r, value:bitstring, =RPdoc,=rpname_1)); 
+          out(priv_ch, (LS, (first, value)))
+          )|  
+          (let email:bitstring=(account,idpname) in
+           let password:bitstring=getpss(email) in
+           out(priv_ch,(https_c,LD,idpname));
+           out(priv_ch,(https_s, (first,email,password), LD, idpname));
+           in(priv_ch,(=https_r,(idptoken_1:bitstring,=email), =LD,=idpname));
+           out(priv_ch, (OW, LD));
+           in(priv_ch, (=LD, pif:entity)); 
+           ((new sk2:skey;
+           let pkuser=pk(sk2) in                      
+           out(priv_ch, (PM, LD, pif, (pkuser,email))); 
+           in(priv_ch1, (=PM,=LD,=pif,UC_1:bitstring));
+           let rpdomain:bitstring=(domain, rpname_1) in
+           let ia_1:bitstring=sign(rpdomain,sk2) in 
+           out(priv_ch, (PM, LD, RPdoc, (ia_1,UC_1,email)))
+           
+           )|
+           ( (*PIF inside LD*)
+           in(priv_ch1,(=PM, =LD,=pif, (pkuser_1:pkey,email_6:bitstring)));             
+           out(priv_ch,(https_c,pif,idpname));
+           out(priv_ch,(https_s, (pkuser_1,email_6),pif,idpname)); 
+           in(priv_ch,(=https_r, UC_2:bitstring,=pif,=idpname));
+           out(priv_ch,(PM, LD, pif, UC_2))     
+           )))|
+           (out(priv_ch, (OW, root));    (*attacker behavior begins*)
+           in(priv_ch,(=root, idp_window:entity));
+           let email_7:bitstring=(account,idpname) in 
+           out(priv_ch,(OW, idp_window));
+           in(priv_ch,(=idp_window, RPdoc_auto:entity));
+           (in(priv_ch1,(=PM, =idp_window,pif_auto_1:entity,=trigger)); 
+           out(chc, (email_7,rpname_1)))|
+           (out(priv_ch,(OW, RPdoc_auto)); 
+           in(priv_ch,(=RPdoc_auto, cif:entity)); 
+           (in(priv_ch2,(=LS,(=first,status:bitstring)));
+           if status=success then
+           out(priv_ch, (OW, cif)); 
+           in(priv_ch, (=cif, pif_auto:entity));
+           (out(priv_ch,(parentOf, pif_auto));
+            in(priv_ch,(=parentOf,cif_1:entity,=pif_auto));
+            out(priv_ch,(parentOf, cif_1));
+            in(priv_ch,(=parentOf,RPdoc_auto_1:entity, =cif_1));
+            out(priv_ch,(parentOf, RPdoc_auto_1));
+            in(priv_ch,(=parentOf,idp_window_1:entity, =RPdoc_auto_1));
+            out(priv_ch, (PM,idp_window_1,pif_auto,trigger))
+            )))).
+
+
+let RP(rpname:entity, idpname:entity)
+          =   (
+          out(priv_ch,(https_c, rpname, idpname)); 
+          in(priv_ch,(=https_r, pkidp:pkey,=rpname,=idpname));
+          in(c,(RPdoc_1:entity, =rpname)); 
+          in(priv_ch, (=https_r,(ia_2:bitstring,UC_3:bitstring,email_3:bitstring),=RPdoc_1,=rpname)); 
+          let z=extract(getmsg(UC_3,pkidp)) in 
+          let x=check(getmsg(ia_2,z)) in         
+          out(priv_ch, (https_s, x,RPdoc_1,rpname))).
+
+let IDP(idpname:entity,rpname:entity, skidp:skey, pkidp_1:pkey)= 
+          in(c,(=rpname,=idpname));
+          out(priv_ch, (https_s,pkidp_1,rpname,idpname)); 
+          in(c,(LD_1:entity, =idpname)); 
+          in(priv_ch,(=https_r, (=first, email_4:bitstring,password_1:bitstring),=LD_1,=idpname));
+          if password_1=getpss(email_4) then
+          new token:bitstring;
+          let idptoken=(token, email_4) in
+          out(priv_ch,(https_s, idptoken, LD_1,idpname));
+          in(c, (pif_1:entity, =idpname));
+          in(priv_ch, (=https_r, (pkuser_3:pkey,=email_4),=pif_1,=idpname));    
+          let UC_4=sign((pkuser_3,email_4),skidp) in 
+          out(priv_ch, (https_s, UC_4, pif_1,idpname));
+          in(priv_ch, (=https_r,(=second, =email_4,password_2:bitstring),=LD_1, =idpname)).
+
+
+
+process new idpname:entity; new RPname1:entity; new RPname2:entity; 
+        new skidp:skey; new fake_pkey:pkey;
+        let pkidp_1=pk(skidp) in 
+        (!out(chc,idpname)|!out(chc,RPname1)|!out(chc, RPname2)|
+         web| 
+          ((let account:name=account1 in
+           let rpname:entity=choice[RPname1,RPname2] in
+            login(account,rpname,idpname)|!RP(rpname,idpname)|!IDP(idpname, rpname, skidp, pkidp_1))|
+          (let account=account2 in
+           let rpname=choice[RPname2,RPname1] in 
+            login(account,rpname,idpname)|!RP(rpname,idpname)|!IDP(idpname, rpname, skidp, pkidp_1)))) 
+
+
+
+          

@@ -1,0 +1,84 @@
+event success_rp_login(entity,entity,entity).
+event  start_user_login(entity,entity,entity).
+event success_user_login(entity,entity,entity).
+event  start_rp_login(entity, entity,entity).
+
+query x:entity, y:entity, z: entity; event(success_rp_login(x,y,z))==> event( start_user_login(x,y,z)).
+query x:entity, y:entity, z: entity; event(success_user_login(x,y,z))==> event( start_rp_login(x,y,z)).
+
+let login( rpname:entity, idpname:entity)= 
+           new account:name;
+           new root:entity;
+           let rpname_1=rpname in
+           out(priv_ch, (OW, root));
+           in(priv_ch,(=root,docname:entity));
+           out(priv_ch,(https_c,docname,rpname_1));
+event start_user_login(docname,rpname_1,idpname);
+           let mode:bitstring=authorization in (* define which mode to be used*)
+           out(priv_ch, (https_s,(idpname, mode),docname,rpname_1));
+           in(priv_ch,(=https_r, (=nonce_1, client_id_1:bitstring,state_1:bitstring), =docname,=rpname_1));           
+           out(priv_ch,(https_c,docname,idpname));
+           out(priv_ch,(https_s,(nonce_8, client_id_1, state_1),docname,idpname));
+           in(priv_ch, (=https_r, =user_info_request, =docname, =idpname));          
+           let password:bitstring=getpss(account) in
+           out(priv_ch,(https_s,(nonce_7, account, password),docname,idpname));
+           in(priv_ch, (=https_r, (=nonce_2, code_1:bitstring,=state_1), =docname,=idpname));         
+           out(priv_ch,(https_s, (code_1,state_1),docname, rpname_1));
+           in(priv_ch,(=https_r, (=nonce_6,session_token_1:bitstring), =docname,=rpname_1));
+event success_user_login(docname,rpname_1,idpname).
+
+          
+let RP(rpname:entity, idpname:entity)=
+       in(c, (docname_1:entity,=rpname));
+       in(priv_ch,(=https_r,(=idpname, mode_1:bitstring),=docname_1,=rpname));
+event start_rp_login(docname_1,rpname,idpname);
+       new state:bitstring;
+       new client_id:bitstring;
+       out(priv_ch, (https_s, (nonce_1, client_id, state), docname_1, rpname));
+       in(priv_ch, (=https_r, (code_2:bitstring, =state), =docname_1,=rpname));
+       out(priv_ch, (https_c,rpname,idpname));
+       new client_secret:bitstring;
+       out(priv_ch, (https_s, (nonce_3, code_2, client_id, client_secret), rpname,idpname));
+       in(priv_ch, (=https_r, (=nonce_5,access_token_1:bitstring), =rpname,=idpname));
+       out(priv_ch, (https_s, (nonce_10, mode_1, access_token_1), rpname, idpname)); 
+       (if mode_1=authen then
+       in(priv_ch,(=https_r, (=nonce_9,protected_files_1:bitstring), =rpname, =idpname));
+event success_rp_login(docname_2,rpname,idpname)
+       )|
+       (if mode_1=authorization then 
+       (
+       in(priv_ch, (=https_r, (=nonce_4, =client_id, user_id_1:bitstring), =rpname, =idpname));
+       new session_token:bitstring; 
+       out(priv_ch, (https_s, (nonce_6,session_token), docname_1, rpname));
+event success_rp_login(docname_2,rpname,idpname)
+       )).
+
+let IDP(idpname:entity,rpname:entity)=
+        in(c,(docname_2:entity,=idpname));
+        in(priv_ch,(=https_r, (=nonce_8, client_id_2:bitstring, state_2:bitstring), =docname_2, =idpname));
+        out(priv_ch, (https_s, user_info_request, docname_2, idpname));
+        in(priv_ch, (=https_r, (=nonce_7, account_1:name,password_1:bitstring), =docname_2, =idpname)); 
+        if password_1=getpss(account_1) then
+        new code:bitstring;
+        out(priv_ch,(https_s, (nonce_2, code, state_2), docname_2, idpname));      
+        in(c,(rpname_2:entity,=idpname));
+        in(priv_ch, (=https_r, (=nonce_3, =code, =client_id_2,client_secret_2:bitstring), =rpname_2, =idpname));
+        new access_token:bitstring;
+        out(priv_ch, (https_s, (nonce_5,access_token), rpname_2, idpname));
+        in(priv_ch, (=https_r, (=nonce_10, mode_2:bitstring, =access_token), =rpname_2, =idpname));
+        (if mode_2=authen then
+        new protected_files:bitstring;
+        out(priv_ch, (https_s, (nonce_9,protected_files), rpname_2, idpname))
+        )|
+        (if mode_2=authorization then 
+         new user_id:bitstring;
+         out(priv_ch, (https_s, (nonce_4, client_id_2, user_id), rpname_2, idpname))
+        ).
+             
+process new idpname:entity; new rpname:entity; 
+        (!out(chc,idpname)|!out(chc,rpname)|
+         web|login(rpname,idpname)|!RP(rpname,idpname)|!IDP(idpname, rpname))            
+ 
+            
+
+          

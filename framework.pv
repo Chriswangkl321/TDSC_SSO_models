@@ -1,0 +1,102 @@
+
+type entity.
+type enckey. 
+type request.
+type mark.
+type skey.
+type pkey.
+type name.
+
+free c: channel [private].
+free chc: channel.
+free priv_n: channel [private].
+free priv_ch: channel [private].
+free priv_ch1: channel [private].
+free priv_ch2: channel [private].
+free priv_rd: channel [private].
+free priv_fw: channel [private].
+free account1:name.
+free account2:name.
+
+
+const http_n: request.
+const http_s: request.
+const http_r: request.
+const https_c: request.
+const https_s: request.
+const https_r: request.
+const parentOf: request.
+const OW: request.
+const PM: request.
+const LS: request.
+const first: mark.
+const second: mark.
+const ready: bitstring.
+const retry:bitstring.
+const error:bitstring.
+const success: bitstring.
+
+
+fun Parent(entity):entity.
+fun httpskey(entity, entity): enckey.
+fun enc(bitstring, enckey):bitstring.
+reduc forall m:bitstring, k:enckey; dec(enc(m,k),k)=m.
+fun getrpdomain(entity):bitstring.
+fun secretkey(bitstring, entity): skey.
+fun pk(skey):pkey.
+fun getpss(bitstring):bitstring.
+fun sign(bitstring, skey):bitstring.
+reduc forall m:bitstring,sk:skey; getmsg(sign(m, sk),pk(sk))=m.
+
+letfun check(x:bitstring or fail)=
+       let y=x in success else error.
+
+let http_connect=in(priv_n, (=http_n,sender_name4:entity,receiver_name4:entity));  
+                  out(c, (sender_name4,receiver_name4)).
+let http_send=new nonce:bitstring; 
+              in(priv_n, (=http_s,http_msg:bitstring, sender_name5:entity, receiver_name5:entity));
+              out(c,(nonce,http_msg, sender_name5, receiver_name5)).
+let http_receive=in(c, (nonce3:bitstring, http_msg1:bitstring,sender_name3:entity,receiver_name3:entity));
+                  out(priv_n, (http_r,http_msg1,sender_name3,receiver_name3)).
+let https_connect=in(priv_n, (=https_c,sender_name:entity,receiver_name:entity));  
+                  let key=httpskey(sender_name, receiver_name) in
+                  out(c, (sender_name,receiver_name)).
+let https_send=in(priv_n, (=https_s,https_msg:bitstring,sender_name1:entity,receiver_name1:entity)); 
+               let key1=httpskey(sender_name1,receiver_name1) in  
+               new nonce1:bitstring; 
+               out(c, (enc((nonce1,https_msg),key1),sender_name1,receiver_name1)).
+let https_receive=in(c, (enc_msg:bitstring,sender_name2:entity,receiver_name2:entity));
+                  let key2=httpskey(sender_name2,receiver_name2) in  
+                  let (nonce2:bitstring,https_msg1:bitstring)=dec(enc_msg,key2) in 
+                  out(priv_n, (https_r,https_msg1,sender_name2,receiver_name2)).
+let network = !http_connect|!http_receive|!http_send|!https_connect|!https_send|!https_receive.
+
+
+let P_wpi=(in(priv_ch,(=OW, parent_window_name:entity));
+           let new_window_name=Parent(parent_window_name) in
+           out(priv_ch, (parent_window_name, new_window_name));
+           in(priv_ch,(=parentOf, =new_window_name));
+           out(priv_ch,(parentOf,parent_window_name,new_window_name)))|
+           (in(priv_ch,(=http_n, sender_name6:entity, receiver_name6:entity));
+            out(priv_n,(http_n, sender_name6, receiver_name6)))|
+           (in(priv_ch,(=https_c, sender_name7:entity, receiver_name7:entity));
+            out(priv_n,(https_c, sender_name7, receiver_name7)))|
+           (in(priv_ch,(=http_s, http_msg2:bitstring, sender_name8:entity, receiver_name8:entity));
+            out(priv_n,(http_s, sender_name8, receiver_name8)))|
+           (in(priv_ch,(=https_s, https_msg2:bitstring, sender_name9:entity, receiver_name9:entity));
+            out(priv_n,(https_s, https_msg2, sender_name9, receiver_name9)))|
+           (in(priv_n,(=http_r, http_msg3:bitstring, sender_name10:entity, receiver_name10:entity));
+            out(priv_ch,(http_r, http_msg3, sender_name10, receiver_name10)))|
+           (in(priv_n,(=https_r, https_msg3:bitstring, sender_name11:entity, receiver_name11:entity));
+            out(priv_ch,(https_r, https_msg3, sender_name11, receiver_name11))).
+
+let P_pm= in(priv_ch,(=PM, sender_name12:entity, receiver_name12:entity, msg:bitstring));
+          out(priv_ch1, (PM, sender_name12, receiver_name12, msg)).
+
+let P_ls=in(priv_ch, (=LS, (index:bitstring, ls_msg:bitstring)));
+         out(priv_ch2, (LS, (index, ls_msg))).
+
+let browser= !P_wpi|!P_pm|!P_ls.
+
+let web= new bname:entity; !browser|!network.
+

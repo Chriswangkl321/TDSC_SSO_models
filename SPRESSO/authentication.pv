@@ -1,0 +1,105 @@
+event success_rp_login(bitstring,entity).
+event  start_user_login(bitstring,entity).
+event success_user_login(bitstring,entity).
+event  start_rp_login(bitstring,entity).
+
+query x:bitstring, z: entity; event(success_rp_login(x,z))==> event( start_user_login(x,z)).
+query x:bitstring, z: entity; event(success_user_login(x,z))==> event( start_rp_login(x,z)).
+
+let login(rpname:entity,idpname:entity)=
+          new account:name; 
+          let email:bitstring=(account,idpname) in
+          let rpname_1=rpname in
+          new root:entity; 
+          out(priv_ch, (OW, root));
+          in(priv_ch, (=root, rp_doc:entity)); 
+          out(priv_ch, (https_c,rp_doc,rpname_1));
+event start_user_login(email,rpname_1); 
+          out(priv_ch,(https_s,email,rp_doc,rpname_1));
+          in(priv_ch,(=https_r,(tagkey:enckey,fw_domain:bitstring,log_sess_token:bitstring),=rp_doc,=rpname_1));
+          out(priv_ch,(OW, rp_doc));
+          in(priv_ch,(=rp_doc,rd_doc:entity)); 
+          (out(priv_rd,log_sess_token);
+           in(priv_ch1,(=PM,fw_doc:entity,=rp_doc,=ready)); 
+           out(priv_ch,(PM,fw_doc,rp_doc,tagkey)); 
+           in(priv_ch1,(=PM,=fw_doc,=rp_doc, (enc_ia:bitstring,=getrpdomain(rpname_1)))); 
+           out(priv_ch, (https_s,(enc_ia,log_sess_token),rp_doc,rpname_1));
+           in(priv_ch,(=https_r,=success,=rp_doc,=rpname_1));
+event success_user_login(email,rpname_1))
+          |
+          (in(priv_rd,log_sess_token1:bitstring);
+           out(priv_ch,(https_c,rd_doc,rpname_1));
+           out(priv_ch,(https_s,log_sess_token1,rd_doc,rpname_1));
+           in(priv_ch,(=https_r,(=rd_doc,tag:bitstring,fw_domain1:bitstring,(=account,=idpname), ia_key:enckey),=rd_doc,=rpname_1)); 
+           out(priv_ch,(https_c,rd_doc,idpname));
+           let password:bitstring =getpss(email) in
+           out(priv_ch, (https_s,(first,email,password,fw_domain1,tag),rd_doc,idpname));
+           in(priv_ch,(=https_r, ia:bitstring, =rd_doc,=idpname));
+           let enc_ia:bitstring=enc(ia,ia_key) in
+           out(priv_ch,(OW, rd_doc));
+           in(priv_ch, (=rd_doc,fw_doc1:entity));
+             (out(priv_fw, (enc_ia,tag, fw_doc1)))
+             |
+              (in(priv_fw, (enc_ia1:bitstring,tag1:bitstring,fw_doc2:entity)); 
+               out(priv_ch,(parentOf, fw_doc2));
+               in(priv_ch,(=parentOf,rd_doc1:entity,=fw_doc2));
+               out(priv_ch,(parentOf, rd_doc1));
+               in(priv_ch,(=parentOf, rp_doc1:entity,=rd_doc1)); 
+               out(priv_ch,(PM,fw_doc2,rp_doc1,ready));
+               in(priv_ch1,(=PM,=fw_doc2,=rp_doc1,tagkey_1:enckey));
+               let (rpdomain_1:bitstring,nonce_4:bitstring)=dec(tag1, tagkey_1) in 
+               out(priv_ch,(PM,fw_doc2,rp_doc1,(enc_ia1,rpdomain_1)))
+               )).
+          
+let RP(rpname:entity) = 
+          in(c,(rp_doc2:entity, =rpname));  
+          in(priv_ch,(=https_r, (account_2:name,idpname_2:entity),=rp_doc2,=rpname)); 
+event start_rp_login((account_2,idpname_2),rpname);
+          out(priv_ch, (https_c,rpname,idpname_2)); 
+          in(priv_ch, (=https_r, pkidp:pkey, =rpname, =idpname_2));
+           (new nonce_3:bitstring; 
+           new ia_key1:enckey;
+           new tagkey_2:enckey;
+           new log_sess_token2:bitstring;
+           let rpdomain_2:bitstring=getrpdomain(rpname) in
+           let tag2=enc((rpdomain_2,nonce_3),tagkey_2) in  
+           new fw_domain2:bitstring; 
+           out(priv_ch,(https_s,(tagkey_2,fw_domain2,log_sess_token2),rp_doc2,rpname));
+           in(c, (rd_doc2:entity,=rpname)); 
+           in(priv_ch,(=https_r,=log_sess_token2,=rd_doc2,=rpname));
+           out(priv_ch,(https_s,(rd_doc2,tag2,fw_domain2, (account_2,idpname_2),ia_key1),rd_doc2,rpname));
+           in(priv_ch,(=https_r,(enc_ia2:bitstring, =log_sess_token2),=rp_doc2,=rpname));
+           let ia2:bitstring=dec(enc_ia2,ia_key1) in  
+           let (=tag2,=(account_2,idpname_2),=fw_domain2)=getmsg(ia2, pkidp) in
+           ( 
+            out(priv_ch,(https_s,success,rp_doc2,rpname));
+event success_rp_login((account_2,idpname_2),rpname)
+           )
+           else(
+           out(priv_ch,(https_s,retry,rp_doc2,rpname)))
+           ).
+
+let IDP(idpname:entity) = 
+          in(c,(rpname_2:entity, =idpname));
+          new SK:bitstring;
+          let skidp_1:skey=secretkey(SK, rpname_2) in
+          let pkidp_1:pkey=pk(skidp_1) in
+          out(priv_ch, (https_s, pkidp_1, rpname_2, idpname));
+          in(c,(rd_doc3:entity,=idpname)); 
+          in(priv_ch,(=https_r, (=first,email_2:bitstring,password_1:bitstring,fw_domain3:bitstring,tag3:bitstring),=rd_doc3,=idpname));
+          if password_1=getpss(email_2) then
+          let ia3:bitstring=sign((tag3,email_2,fw_domain3),skidp_1) in
+          out(priv_ch,(https_s,ia3,rd_doc3,idpname));           
+          in(priv_ch,(=https_r, (=second,email_3:bitstring, password_2:bitstring, fw_domain4:bitstring,tag4:bitstring),=rd_doc3,=idpname)).
+            
+
+process new idpname:entity; new rpname:entity;
+ 
+        (!out(chc,idpname)|!out(chc,rpname)|
+         !IDP(idpname)|web| login(rpname,idpname)|!RP(rpname)) 
+          
+
+
+            
+
+
